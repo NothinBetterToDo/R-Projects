@@ -90,4 +90,4 @@ bar_graph(mtcars, 'cyl', 'am',
           "% Distribution of Number of Cylinders by Transmission")
 ```
 
-![](Write_Functions_in_R_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+
