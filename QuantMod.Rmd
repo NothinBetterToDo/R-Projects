@@ -1,0 +1,76 @@
+---
+title: "Mining Stock Prices and Time Series Analysis"
+author: "Derrine Chia"
+output: html_document
+---
+
+Quantmod, or known as Quantitative Financial Modelling & Trading Framework, is a useful library to gather and analyse quantitative financial trading strategies through stock prices. In this analysis, we will be using quantmod library to mine and chart stock prices data. Additionally, we will also be using other libraries to do time series and forecasting using the data mined. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Loading Required Libraries
+
+```{r}
+library(quantmod)
+library(forecast) #plot autocorrelation
+```
+
+Define start and end date. Let's look at the data since beginning of the last year.
+
+```{r, echo=FALSE}
+start.date <- as.Date("2018-01-01")
+end.date <- Sys.Date()
+```
+
+There are many data sources that are available, except of course for our favorite search engine i.e. Google Finance who stopped providing data since March 2018. Will be using JPM, simply because I own this shares. 
+
+```{r, echo=FALSE}
+getSymbols("JPM", src="yahoo", from=start.date, to=end.date)
+```
+
+View top 6 rows of the datasets 
+
+```{r}
+head(JPM)
+```
+
+# Plot a basic time series chart, looking at stock prices at closing
+
+Stock market is volatile, so if we were looking at let's say 2019 data, it would show JPM stock prices could change dramatically, either up or down, over a short period of time. However it should be adjusted and smooth out over time (of course provided it is a good company and stable economy). 
+
+```{r JPM}
+plot(JPM[, "JPM.Close"], main="JPM Stock Prices at closing")
+```
+
+# Plot a candlestick chart
+
+Let's take a look at the last 3 months candlestick charts, which is a wonderful visual aid that help us to see the price action e.g. whether higher or lower closing price prior to prior candle's close, etc.
+
+```{r}
+candleChart(last(JPM, "3 months"), theme="white", color.vol=TRUE, multi.col=TRUE)
+```
+
+Adding moving average convergence divergence and bollinger bands to the chart series is a nice option. The MACD shows the two moving averages of JPM's price, and it is usually used to gauge the strength of stock price movement. Bollinger bands serve as a way to measure the width between the upper and lower bands. 
+
+```{r, echo=FALSE}
+chartSeries(JPM)
+addMACD()
+addBBands()
+```
+
+This plot shows that the autocorrelation at lag 1 is close to perfect correlation, which makes sense because the stock price is usually very close to the prior day and this applies to JPM as well.Autocorrelations up to lag seven (if you want, change lag.max to 25) are greater 0.7 which indicates high association up to a week. The 2 parallel blue lines are the confidence interval at 0.95.
+
+```{r}
+ggAcf(JPM[, "JPM.Close"], lag.max = 200)
+```
+
+The partial autocorrelation is simply a conditional correlation, that shows the correlation between observations of a time series that separated by k time units.
+
+```{r}
+ggPacf(JPM[, "JPM.Close"], lag.max=20)
+```
+
+These plots will help to determine the next step, in deciding ARIMA model, whether AR or MA terms are needed to correct any autocorrelation. 
+
