@@ -6,6 +6,7 @@ output: html_document
 
 Quantmod, or known as Quantitative Financial Modelling & Trading Framework, is a useful library to gather and analyse quantitative financial trading strategies through stock prices. In this analysis, we will be using quantmod library to mine and chart stock prices data. Additionally, we will also be using other libraries to do time series and forecasting using the data mined. 
 
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
