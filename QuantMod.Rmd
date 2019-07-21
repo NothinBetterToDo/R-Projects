@@ -72,5 +72,6 @@ The partial autocorrelation is simply a conditional correlation, that shows the 
 ggPacf(JPM[, "JPM.Close"], lag.max=20)
 ```
 
-These plots will help to determine the next step, in deciding ARIMA model, whether AR or MA terms are needed to correct any autocorrelation. 
+These plots will help to determine the next step, in deciding ARIMA model, 
+whether AR or MA terms are needed to correct any autocorrelation. 
 
