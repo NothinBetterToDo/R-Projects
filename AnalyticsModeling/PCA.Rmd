@@ -10,7 +10,7 @@ title: "PCA"
 rm(list=ls())
 
 #set working directory
-setwd("//")
+setwd("~/Documents/ISYE6501 Intro Analytics Modelling/Week 6/FA_SP_hw6")
 
 #library 
 library(tidyverse)
@@ -101,6 +101,7 @@ summary(crime_pca_lm1)
 
 ```{r include=TRUE, echo=FALSE, message=FALSE}
 c <- cv.lm(as.data.frame(crime.pca), crime_pca_lm1, m = 5)
+c
 ```
 
 The adjusted R-squared for PCA LM model is better than the previous model (based on variables = Po1, Wealth, Prob) with adjusted R-squared of 49.91. While the adjusted R-squared is better using PCA to better transform our data and solve multicollinerity issues, but the LM results (above) also shows that PC3 and PC6 are insignificant (with p-value > 0.05) at 95% confidence interval. This is something we need to decide in real life - whether to accept a lower fitted model with different number of PCA, drop insignificant PCA, or try different modeling approach.
