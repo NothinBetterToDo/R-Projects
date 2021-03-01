@@ -1,0 +1,160 @@
+---
+title: "PCA"
+---
+
+### Question 9.1
+
+/*Using the same crime data set uscrime.txt as in Question 8.2, apply Principal Component Analysis and then create a regression model using the first few principal components.  Specify your new model in terms of the original variables (not the principal components), and compare its quality to that of your solution to Question 8.2.  You can use the R function prcomp for PCA. (Note that to first scale the data, you can include scale. = TRUE to scale as part of the PCA function. Don’t forget that, to make a prediction for the new city, you’ll need to unscale the coefficients (i.e., do the scaling calculation in reverse)!)*/
+
+```{r include=TRUE, echo=FALSE, message=FALSE}
+rm(list=ls())
+
+#set working directory
+setwd("//")
+
+#library 
+library(tidyverse)
+library(gridExtra)
+library(lattice) #doplot
+library(factoextra) #visualization
+library(DAAG) #cv.lm
+
+#load datafile
+crime <- read.csv("uscrime.txt", header = TRUE, stringsAsFactors = FALSE, sep="\t")
+#summary(crime)
+#head(crime)
+```
+
+
+We have 15 components, and the first component accounts of the variation, the second accounts for 19% of the variation and so on. All 4 of the first components account for 79.93% of the variation.
+
+```{r include=TRUE, echo=FALSE, message=FALSE}
+#exclude dependent variable
+crime_wo_dv <-subset(crime, select=-c(Crime)) 
+pca <- prcomp(crime_wo_dv, scale=TRUE, center=TRUE) 
+summary(pca)
+```
+
+### Methods to identify number of components to retain 
+
+According to the Kaiser criterion, the eigenvalues associated with each component > 1 then we should retain that component, otherwise we can reject it. The eigenvalues show that first 4 components are > 1.
+
+```{r include=TRUE, echo=FALSE, message=FALSE}
+#to get eigenvaluess
+#method 1
+pca$sdev^2  
+
+#method 2
+#diag(var(pca$x[,]))
+
+#to check for correlation matrix of the pca
+#cor(pca$x)
+
+#correlation between original predictor variables and new PCA
+#cor(cbind(crime[,-1], data.frame(pca$x)))
+```
+
+Another method is to validate using scree plot, and we may want to stop choosing components that are approaching 0. In this case, the suggested number of components to use up to PC6.
+
+```{r include=TRUE, echo=FALSE, message=FALSE}
+screeplot(pca, main="Scree Plot", type="line")
+```
+
+Rotations/loadings indicate to what extent each variable is correlated to the component and/or the coefficients of each component. For PC1, it shows that M, So, Ed, PO1, PO2, Wealth, Ineq are positively/negatively correlated with PC1. As for PC2, LF, MF, POP, Time are correlated with the component. 
+
+```{r include=TRUE, echo=FALSE, message=FALSE}
+pca$rotation
+```
+
+Dotplot can be used to display loadings for each component so that it is easier to find out the correlation. 
+
+```{r include=TRUE, echo=FALSE, message=FALSE}
+load <- pca$rotation
+sorted.loadings = load[order(load[,1]),1]
+Main = "Loadings Plot for PC1"
+xlabs = "Variable Loadings"
+dotplot(sorted.loadings, main=Main, xlab=xlabs, cex=1.5, col="red")
+
+```
+
+Another option is to use biplot. Cosine of the angle between these vectors is the correlation between these variables. Biplot can help us to understand the relationship between the PC1 and PC2 - for instance, wealth is negatively correlated with Prob, M, Ineq, So, NW, which means crime 6 is being contrasted with crime 33, 14, 30, 9, 39, 45, 16, etc. As for PC2, LF is being contrasted with Time, U2, Pop, etc. 
+
+```{r include=TRUE, echo=FALSE, message=FALSE}
+fviz_pca_biplot(pca)
+```
+
+Remember that the criteria to check the number of PCA to retain - if based on eigenvalues, we should choose 4 PCA & if based on scree plot, we should probably 6 PCA. I tested cross validation on PCA LM models and the best cross validation result based on adjusted R-squared was 5 and 6 PCA. I will be using 6 principal components in the final model since scree plot also suggested the same.
+
+```{r include=TRUE, echo=FALSE, message=FALSE}
+n = 6
+
+#make crime response variable in the first col, and PCA on the rest of the columns
+crime.pca <- cbind(subset(crime, select=c(Crime)), data.frame(pca$x[, 1:n]))
+
+#check for correlation
+#cor(crime.pca)
+
+#compute 1st model using PC1,PC2,PC3,PC4 based on eigenvalues > 1
+crime_pca_lm1 <- lm(Crime~., data=crime.pca)
+summary(crime_pca_lm1)
+```
+
+```{r include=TRUE, echo=FALSE, message=FALSE}
+c <- cv.lm(as.data.frame(crime.pca), crime_pca_lm1, m = 5)
+```
+
+The adjusted R-squared for PCA LM model is better than the previous model (based on variables = Po1, Wealth, Prob) with adjusted R-squared of 49.91. While the adjusted R-squared is better using PCA to better transform our data and solve multicollinerity issues, but the LM results (above) also shows that PC3 and PC6 are insignificant (with p-value > 0.05) at 95% confidence interval. This is something we need to decide in real life - whether to accept a lower fitted model with different number of PCA, drop insignificant PCA, or try different modeling approach.
+
+```{r include=TRUE, echo=FALSE, message=FALSE}
+#find model coefficients in terms of original variables by multiplying the rotation matrix 
+
+#coefficient for beta 0 or intercept
+intercept <- crime_pca_lm1$coefficients[1]
+
+#coefficients for the rest
+betas <- crime_pca_lm1$coefficients[2:(n+1)]
+
+#implied regression coefficients for betas 
+alpha <-  pca$rotation[,1:n] %*% betas
+
+#compute mu of original unscaled data
+mu <- sapply(crime[, 1:15], mean)
+
+#compute std of original unscaled data
+std <- sapply(crime[, 1:15], sd)
+
+intercept_unscaled <- intercept - sum(alpha * mu/std)
+betas_unscaled <- alpha/std
+
+cat('unscaled intercept:', intercept_unscaled, '\n')
+cat('unscaled betas:', betas_unscaled, '\n')
+
+#this now provides model Y = aX + b 
+estimates <- as.matrix(crime[, 1:15]) %*% betas_unscaled + intercept_unscaled
+
+#calculate R-squared 
+SSE <- sum((estimates - crime[,16])^2)
+SStot <-sum((crime[,16] - mean(crime[,16]))^2)
+R2 <- 1 - SSE/SStot
+#cat('R squared using 4 PCA:', R2, '\n')
+
+#calculate adjusted R-squared
+adj_R2 <- R2 - (1-R2) * n/(nrow(crime)-n-1)
+cat('Adjusted R squared using 4 PCA:', adj_R2, '\n')
+                        
+#data frame for 1 new test data
+new_city <- data.frame(M= 14.0, So = 0, Ed = 10.0, Po1 = 12.0, Po2 = 15.5,
+                    LF = 0.640, M.F = 94.0, Pop = 150, NW = 1.1, U1 = 0.120, U2 = 3.6, Wealth = 3200, Ineq = 20.1,
+                    Prob = 0.040,Time = 39.0)
+
+#apply PCA to new city df
+pca_pred <- data.frame(predict(pca, new_city))
+
+#predict crime using PCA of the new city
+pred <- predict(crime_pca_lm1, pca_pred)
+cat('Predicted crime for new city:', pred, '\n')
+
+```
+
+
+
