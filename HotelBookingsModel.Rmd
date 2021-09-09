@@ -1,0 +1,277 @@
+---
+title: "Hotel Bookings"
+author: "dchia"
+date: "9/5/2021"
+output: html_document
+---
+This is a tutorial dataset and code from Julia Silge.
+https://juliasilge.com/blog/hotels-recipes/
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, echo = TRUE, dpi = 180, 
+                      fig.width = 8, fig.height = 5)
+# load libraries 
+library(tidyverse)
+library(skimr)
+library(GGally)
+library(tidymodels)
+```
+
+## Exploratory Data Analysis
+
+First, load the data file and this can be obtained from the link above. 
+
+```{r}
+# load datafile 
+h <- readr::read_csv("hotels_data.csv")
+head(h)
+```
+
+Use skim function from skimr package, which provides the summary statistics of the variables and can be used on pipeline. 
+
+```{r}
+skim(h)
+```
+
+The first question to answer is to build a model to predict which hotel stays include children and which do not (out of those bookings that did not cancel).
+
+```{r}
+h <- h %>%  
+  filter(is_canceled == 0) %>%
+  mutate(
+    children = case_when(
+      children + babies > 0 ~ "children",
+      TRUE ~ "none"
+    ),
+    required_car_parking_spaces = case_when(
+      required_car_parking_spaces > 0 ~ "parking",
+      TRUE ~ "none"
+    )
+  ) %>%
+  select(-is_canceled, -reservation_status, -babies)
+
+h
+```
+
+Hotel stays without children are at least 11x more than those with children. 
+
+```{r}
+h %>% 
+  count(children)
+```
+This graph shows the proportion of hotel stays with/without for city hotel vs. resort hotel each month. 
+
+```{r}
+h %>%
+  mutate(arrival_date_month = factor(arrival_date_month,
+    levels = month.name
+  )) %>%
+  count(hotel, arrival_date_month, children) %>%
+  group_by(hotel, children) %>%
+  mutate(proportion = n / sum(n)) %>%
+  ggplot(aes(arrival_date_month, proportion, fill = children)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  facet_wrap(~hotel, nrow = 2) +
+  labs(
+    x = NULL,
+    y = "Proportion of hotel stays",
+    fill = NULL
+  )
+```
+This bar chart shows the proportion of hotel stays with/without children that required car parking spaces. 
+
+```{r}
+h %>%  
+  count(hotel, required_car_parking_spaces, children) %>%  
+  group_by(hotel, children) %>% 
+  mutate(proportion = n / sum(n)) %>% 
+  ggplot(aes(required_car_parking_spaces, proportion, fill = children)) + 
+  geom_col(position = "dodge") + 
+  scale_y_continuous(labels = scales::percent_format()) + 
+  facet_wrap(~hotel, nrow = 2) + 
+  labs(
+    x = NULL, 
+    y = "Proportion of hotel stays",
+    fill = NULL
+  )
+```
+Use ggpairs function to get a high-level view of how variables are related to each other. 
+
+```{r}
+h %>% 
+  select(
+    children, adr, 
+    required_car_parking_spaces,
+    total_of_special_requests
+  ) %>% 
+  ggpairs(mapping = aes(color = children))
+```
+Next, let's create dataset for modelling and convert those columns (characters) we are interested, to factors. 
+
+```{r}
+set.seed(1234)
+
+h_df <- h %>% 
+  select(
+    children, hotel, arrival_date_month,meal, adr, adults,
+    required_car_parking_spaces, total_of_special_requests,
+    stays_in_week_nights, stays_in_weekend_nights
+  ) %>% 
+  mutate_if(is.character, factor)
+
+h_df
+```
+
+Then build a set of steps for data processing and feature engineering. 
+Recipe = what model, and training data
+Down sample the data, because there are 11x more hotel stays w/o children
+Convert factor columns into binary 0, 1
+Remove any numeric variables that have zero variance
+Normalize the numeric variables 
+
+Recipe and Prep = do something with the steps and training data, estimate the required parameters from train to implement these steps so the sequence can be applied later to another dataset.
+Recipe = contains all transformations for data processing and feature engineering, as well as these transformations were estimated from. 
+
+```{r}
+set.seed(1234)
+
+h_split <- initial_split(h_df) 
+h_train <- training(h_split)
+h_test <- testing(h_split)
+
+h_rec <-  recipe(children ~ ., data = h_train) %>%
+  step_downsample(children) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_zv(all_numeric()) %>%
+  step_normalize(all_numeric()) %>%
+  prep()
+
+h_rec
+```
+
+```{r}
+test_proc <- bake(h_rec, new_data = h_test)
+test_proc
+```
+
+### KNN 
+Then move on to specify and fit our models. 
+
+Juice() = squeeze the training data back out, transformed in the ways we specificied including the downsampling. 
+
+```{r}
+knn_spec <- nearest_neighbor() %>%
+  set_engine("kknn") %>%
+  set_mode("classification")
+
+knn_fit <- knn_spec %>%
+  fit(children ~ ., data = juice(h_rec))
+
+knn_fit
+```
+
+### Decision Tree 
+
+```{r}
+tree_spec <- decision_tree() %>% 
+  set_engine("rpart") %>% 
+  set_mode("classification")
+
+tree_fit <- tree_spec %>%  
+  fit(children ~., data = juice(h_rec))
+
+tree_fit
+```
+
+# Evaluate models 
+
+To evaluate the models, we need to build a validation set. We can build a set of Monte Carlo splits from the downsampled training data, and use this set of resamples to estimate the performance of the two models. 
+
+```{r}
+set.seed(1234)
+validation_splits <- mc_cv(juice(h_rec), prop = 0.9, strata = children)
+validation_splits
+```
+
+
+```{r}
+knn_res <- fit_resamples(
+  knn_spec,
+  children ~ .,
+  validation_splits,
+  control = control_resamples(save_pred = TRUE)
+)
+
+knn_res %>%
+  collect_metrics()
+```
+```{r}
+tree_res <- fit_resamples(
+  tree_spec,
+  children ~ .,
+  validation_splits,
+  control = control_resamples(save_pred = TRUE)
+)
+
+tree_res %>% 
+  collect_metrics()
+```
+
+
+```{r}
+knn_res %>% 
+  unnest(.predictions) %>% 
+  mutate(model = "kknn") %>% 
+  bind_rows(tree_res %>% 
+              unnest(.predictions) %>% 
+              mutate(model = 'rpart')) %>% 
+  group_by(model) %>% 
+  roc_curve(children, .pred_children) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, color = model)) +
+  geom_line(size = 1.5) +
+  geom_abline(
+    lty = 2, alpha = 0.5, 
+    color = "gray50",
+    size = 1.2
+  )
+```
+
+```{r}
+knn_conf <- knn_res %>% 
+  unnest(.predictions) %>% 
+  conf_mat(children, .pred_class)
+
+knn_conf
+```
+
+```{r}
+knn_conf %>% 
+  autoplot()
+```
+
+```{r}
+knn_fit %>% 
+  predict(new_data = test_proc, type = "prob") %>% 
+  mutate(truth = h_test$children) %>% 
+  roc_auc(truth, .pred_children)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
