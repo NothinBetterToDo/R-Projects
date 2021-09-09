@@ -25,6 +25,9 @@ Short demos using R programming language on different topics/modelling technique
 [Analytics Modelling](https://github.com/NothinBetterToDo/R-Projects/tree/master/AnalyticsModeling)
 * Some homework assignments from my graduate course e.g. PCA, regression <br/>
 
+[Hotel Bookings Tutorial](https://github.com/NothinBetterToDo/R-Projects/blob/master/HotelBookingsModel.Rmd)
+* R Tutorial on how to use tidymodels framework for machine learning and modeling <br/>
+
 ## Status
 Project is: _in progress_
 
